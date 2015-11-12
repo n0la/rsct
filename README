@@ -1,0 +1,16 @@
+RSCT is a perl library and application that allows you to fetch information from
+the Reiner SCT web terminal.
+
+Run the following for more information:
+
+$ perldoc rsct
+
+or
+
+$ ./rsct help
+
+For a guide on how to use the RSCT perl module:
+
+$ perldoc RSCT
+
+Have fun.

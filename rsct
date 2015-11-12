@@ -1,0 +1,322 @@
+#!/usr/bin/perl -w
+
+use strict;
+use warnings;
+
+use v5.14;
+use RSCT;
+use Env qw(HOME);
+
+use YAML::XS;
+use Term::ReadPassword;
+
+use Getopt::Long;
+
+my $default_config = $HOME.'/.rsct';
+
+my $url;
+my $username;
+my $password;
+my $config = $default_config;
+my $csv = 1;
+my $all = 0;
+my $output;
+
+my $month;
+my $rsct;
+
+my $command = shift;
+
+sub usage {
+    say('rsct [command] [options]');
+}
+
+sub overview {
+    say('Flexitime: '.$rsct->flexitime);
+    say('Leave: '.$rsct->leave);
+
+    foreach my $item (@{$rsct->positions}) {
+        say($item->{'time'}.': '.$item->{'type'});
+    }
+
+    say('Overview '.$month->{'month'}.'.'.$month->{'year'}.':');
+    foreach my $day (@{$month->{'days'}}) {
+        if ($day->{'come_sta'} ne '') {
+            say("$day->{'date'}: $day->{'come_sta'} - $day->{'go_sta'} ".
+                "Break: $day->{'break'} FT: $day->{'ftday'}"
+               );
+        } elsif ($day->{'absence'} ne '') {
+            say("$day->{'date'}: $day->{'absence'}");
+        }
+    }
+}
+
+sub csv_export_month {
+    my $FH = shift;
+    my $header = shift // 1;
+
+    my @keys = ('date',
+                'come_sta', 'come_rou', 'come_ass',
+                'go_sta', 'go_rou', 'go_ass',
+                'absence', 'profile', 'break',
+                'target', 'fb', 'present',
+                'ftday', 'ftmonth', 'fttotal'
+               );
+    my @days = @{$month->{'days'}};
+
+    say($FH join(",", @keys)) if $header;
+
+    foreach my $day (@days) {
+        my @data = map { $day->{$_} } @keys;
+        say($FH join(",", @data));
+    }
+}
+
+sub csv_export_current {
+    my $file = shift;
+
+    open(my $CSV, "> $file")
+      or die("Could not open CSV file: $csv");
+
+    csv_export_month($CSV);
+    close($CSV);
+}
+
+sub csv_export_all {
+    my $path = shift;
+    my $done = 0;
+    my $header = 1;
+
+    do {
+        if (-d $path) {
+            my $file = $path.'/'. $month->{'month'}.$month->{'year'}.'.csv';
+            csv_export_current($file);
+        } else {
+            open(my $CSV, ">> $path")
+              or die('Could not open CSV file: '.$path);
+
+            csv_export_month($CSV, $header);
+            $header = 0;
+
+            close($CSV);
+        }
+
+        eval {
+            $month = $rsct->prev_month();
+        };
+
+        $done = 1 if $@;
+    } while (not $done);
+}
+
+sub csv_export {
+    if (not $all) {
+        csv_export_current($output // '-');
+    } else {
+        csv_export_all($output // '-');
+    }
+}
+
+sub perror {
+    say(STDERR shift);
+    exit(3);
+}
+
+sub check_password {
+    unless ($password) {
+        while (1) {
+            my $p = read_password('Specify password: ', 0, 1);
+            exit(3) unless $p;
+            if ($p) {
+                $password = $p;
+                last;
+            }
+        }
+    }
+
+    if ($password eq '-') {
+        $password = <>;
+        chomp($password);
+    }
+}
+
+sub sanity_checks {
+    perror('No URL specified.') unless defined $url;
+    perror('No username specified.') unless defined $username;
+    perror('No password specified.') unless defined $password;
+}
+
+sub load_config {
+    my $file = $config;
+
+    return if not -e $file and $file eq $default_config;
+
+    my $cfg = YAML::XS::LoadFile($file);
+
+    $url = $cfg->{'url'} unless $url;
+    $username = $cfg->{'username'} unless $username;
+    $password = $cfg->{'password'} unless $password;
+}
+
+sub cmd_export {
+    if ($csv) {
+        csv_export();
+    }
+    return 0;
+}
+
+sub cmd_overview {
+    overview();
+    return 0;
+}
+
+sub cmd_help {
+    system('perldoc rsct');
+}
+
+GetOptions('u|username=s' => \$username,
+           'p|password=s' => \$password,
+           'f|file=s' => \$config,
+           'url=s' => \$url,
+           'c|csv' => \$csv,
+           'o|output=s' => \$output,
+           'a|all' => \$all,
+          ) or exit(1);
+load_config();
+
+my %commands = (
+                'export' => \&cmd_export,
+                'overview' => \&cmd_overview,
+                '' => \&cmd_overview,
+               );
+
+$command = '' unless defined $command;
+
+if ($command eq '') {
+    usage();
+    exit(1);
+}
+
+if ($command eq 'help') {
+    exit(cmd_help());
+}
+
+unless ($commands{$command}) {
+    usage();
+    exit(1);
+}
+
+check_password();
+sanity_checks();
+
+$rsct = RSCT->new($url);
+# Login and fetch month.
+$rsct->login($username, $password);
+$month = $rsct->monthly_view();
+
+my $ret = 3;
+
+eval {
+    $ret = $commands{$command}();
+};
+
+warn $@ if $@;
+
+$rsct->logout();
+
+exit($ret);
+
+=head1 NAME
+
+rsct -- export and show current times stamped with ReinerSCT.
+
+=head1 SYNOPSIS
+
+rsct [command] [options]
+
+=head1 DESCRIPTION
+
+rsct uses the RSCT perl module to fetch and parse information from the
+ReinerSCT PCTerminal web application. It can show the data in human
+readable form (for viewing) but also export it to CSV, so that other
+applications can process the data.
+
+=head1 COMMANDS
+
+=over 4
+
+=item B<help>
+
+This bogus.
+
+=item B<overview>
+
+Print a human readable overview of the current day and the current
+month.
+
+=item B<export>
+
+Export the data to a file (standard stdout).
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item b<-a>, b<--all>
+
+Tells b<export> to export all months starting with the current one and
+moving backwards until now more data can be found on the web application.
+
+=item b<-c>, b<--csv>
+
+When runing b<export> export in CSV format.
+
+=item B<-f> I<file>, B<--file> I<file>
+
+Specify a different location for the configuration file, than $HOME/.rsct.
+
+=item B<-o> I<file-or-dir>, B<--output> I<file-or-dir>
+
+Sets an alternate output file or directory name for B<export>. If I<--all>
+is also specified then this can be a directory. In this case separate files
+for each month are created instead of having one big dump of data.
+
+=item B<-p> I<password>, B<--password> I<password>
+
+The password to login with. If you do not specify a password then one is
+prompted for on the terminal. Pass "-" as a password to have rsct read it
+from stdin. You can also specify the password in the configuration file.
+
+=item B<--url> I<url>
+
+The URL of the ReinerSCT PCTerminal. This must be the full URL with the
+location (usually /reiner-sct/pcterminal).
+
+=item B<-u> I<username>, B<--username> I<username>
+
+Specify the username to login with.
+
+=back
+
+=head1 CONFIG FILE
+
+The configuration lies in $HOME/.rsct. It is in YAML format and allows
+to specify B<url>, B<username> and B<password>. An alternate file can
+be given by using the I<-f> or I<--file> option:
+
+  url: "http://example.com/reiner-sct/pcterminal"
+  username: foo
+  password: bar
+
+Values given on the command line override configuration file parameters.
+
+=head1 AUTHOR
+
+rsct and the corresponding RSCT Perl module where written by:
+Florian Stinglmayr <florian@n0la.org>
+
+=head1 COPYRIGHT
+
+  Copyright 2015 Florian Stinglmayr
