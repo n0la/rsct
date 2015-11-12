@@ -1,6 +1,14 @@
 RSCT is a perl library and application that allows you to fetch information from
 the Reiner SCT web terminal.
 
+Dependencies:
+
+ * JSON
+ * LWP::UserAgent
+ * HTTP::Cookies
+ * YAML::XS
+ * Term::ReadPassword
+
 Run the following for more information:
 
 $ perldoc rsct
