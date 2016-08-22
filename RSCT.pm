@@ -754,6 +754,22 @@ for the last month.
 In monthly view, will naviate one month forward. It will return a month hashref
 for the next month.
 
+=item go()
+
+In main view, this will mark the user as stamped out. No specific subtypes can
+be specified and all the defaults set in the confirmation dialogue will be used
+as is.
+
+=item come()
+
+In main view, this will mark the user as stamped in. No specific subtypes can
+be specified and all the defaults set in the confirmation dialogue will be used
+as is.
+
+=item is_stamped_in()
+
+Returns true if the user is stamped in, false otherwise.
+
 =back
 
 =head2 MONTH HASHREF
