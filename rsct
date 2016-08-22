@@ -282,6 +282,18 @@ month.
 
 Export the data to a file (standard stdout).
 
+=item B<go>
+
+Stamp out.
+
+=item B<come>
+
+Stamp in.
+
+=item B<status>
+
+Show whether you are currently stamped out or in.
+
 =back
 
 =head1 OPTIONS
