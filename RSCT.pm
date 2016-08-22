@@ -237,6 +237,19 @@ sub _parse_overview {
 
     ($self->{'leave'}) = ($leave->{'text'} =~ m/([-]*\d+\.\d+)/ig);
 
+    # Find go and come button
+    my $go = $self->_find_widget($widgets, sub {
+                                     return ($_[0]->{'text'} =~ m/Go/g);
+                                 });
+
+    $self->{'_main_go'} = $go;
+
+    my $come = $self->_find_widget($widgets, sub {
+                                     return ($_[0]->{'text'} =~ m/Come/g);
+                                 });
+
+    $self->{'_main_come'} = $come;
+
     # Parse positions
     my @positions;
 
@@ -468,6 +481,77 @@ sub next_month {
     my $self = shift;
 
     return $self->_move_month('forward');
+}
+
+sub come {
+    my $self = shift;
+
+    if ($self->state == MONTHLYVIEW) {
+        # Switch back to main view.
+        $self->main_view();
+    }
+
+    my $btn = $self->{'_main_come'};
+
+    die('No "Come" button. Perhaps not stamped out?')
+      unless $btn;
+
+    my ($req, $res) = $self->_press_button($btn);
+
+    die('Could not stamp you in.')
+      unless $res->is_success;
+
+    my $j = decode_json($res->content);
+    my $w = $self->_get_widgets($j);
+
+    my $confirm = $self->_find_widget($w, sub {
+                                          return ($_[0]->{'text'} =~ m/OK/);
+                                      });
+
+    die('No confirm button for stamping in.')
+      unless $confirm;
+
+    ($req, $res) = $self->_press_button($confirm);
+    die('Could not confirm stamp in.')
+      unless $res->is_success;
+}
+
+sub go {
+    my $self = shift;
+
+    if ($self->state == MONTHLYVIEW) {
+        # Switch back to main view.
+        $self->main_view();
+    }
+
+    my $btn = $self->{'_main_go'};
+
+    die('No go button. Perhaps not stamped in?')
+      unless $btn;
+
+    my ($req, $res) = $self->_press_button($btn);
+
+    die('Could not stamp you out.')
+      unless $res->is_success;
+
+    my $j = decode_json($res->content);
+    my $w = $self->_get_widgets($j);
+
+    my $confirm = $self->_find_widget($w, sub {
+                                          return ($_[0]->{'text'} =~ m/OK/);
+                                      });
+
+    die('No confirm button for stamping out.')
+      unless $confirm;
+
+    ($req, $res) = $self->_press_button($confirm);
+    die('Could not confirm stamp out.')
+      unless $res->is_success;
+}
+
+sub is_stamped_in {
+    my $self = shift;
+    return defined $self->{'_main_go'};
 }
 
 sub main_view {

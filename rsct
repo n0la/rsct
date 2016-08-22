@@ -32,6 +32,8 @@ sub usage {
 }
 
 sub overview {
+    $month = $rsct->monthly_view();
+
     say('Flexitime: '.$rsct->flexitime);
     say('Leave: '.$rsct->leave);
 
@@ -110,6 +112,8 @@ sub csv_export_all {
 }
 
 sub csv_export {
+    $month = $rsct->monthly_view();
+
     if (not $all) {
         csv_export_current($output // '-');
     } else {
@@ -170,6 +174,24 @@ sub cmd_overview {
     return 0;
 }
 
+sub cmd_go {
+    $rsct->go();
+    return 0;
+}
+
+sub cmd_come {
+    $rsct->come();
+    return 0;
+}
+
+sub cmd_status {
+    if ($rsct->is_stamped_in()) {
+        say('Status: stamped in');
+    } else {
+        say('Status: stamped out');
+    }
+}
+
 sub cmd_help {
     system('perldoc rsct');
 }
@@ -188,6 +210,9 @@ my %commands = (
                 'export' => \&cmd_export,
                 'overview' => \&cmd_overview,
                 '' => \&cmd_overview,
+                'go' => \&cmd_go,
+                'come' => \&cmd_come,
+                'status' => \&cmd_status,
                );
 
 $command = '' unless defined $command;
@@ -212,7 +237,6 @@ sanity_checks();
 $rsct = RSCT->new($url);
 # Login and fetch month.
 $rsct->login($username, $password);
-$month = $rsct->monthly_view();
 
 my $ret = 3;
 
