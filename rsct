@@ -9,6 +9,8 @@ use Env qw(HOME);
 
 use YAML::XS;
 use Term::ReadPassword;
+use DateTime;
+use Data::Dumper;
 
 use Getopt::Long;
 
@@ -31,15 +33,70 @@ sub usage {
     say('rsct [command] [options]');
 }
 
+sub calculate_presence {
+    my @positions = @{ $rsct->positions };
+    my @dates;
+    my @undates;
+    my $start = undef;
+    my $end = undef;
+    my $presence = DateTime::Duration->new();
+
+    foreach my $pos (@positions) {
+        my $time = $pos->{'time'};
+        if ($time =~ m/(\d+)\:(\d+) (AM|PM)/g) {
+            my ($hour, $minute, $pm) = ($1, $2, $3);
+            $hour += 12 if $pm =~ m/PM/i && ($hour != 0 && $hour != 12);
+            $hour  =  0 if $pm =~ m/AM/i && ($hour == 12);
+
+            my $datetime = DateTime->now(time_zone => 'Europe/Vienna')
+              ->set(hour => $hour, minute => $minute)
+              ;
+            my $obj = { datetime => $datetime, type => $pos->{'type'} };
+            push(@undates, $obj);
+        }
+    }
+
+    @dates = sort { $a->{'datetime'}->epoch cmp $b->{'datetime'}->epoch } @undates;
+
+    foreach my $cur (@dates) {
+        printf("%02d:%02d: %s\n",
+               $cur->{'datetime'}->hour,
+               $cur->{'datetime'}->minute,
+               $cur->{'type'}
+           );
+
+        if ($cur->{'type'} eq 'Come') {
+            $start = $cur->{'datetime'};
+        } elsif ($cur->{'type'} eq 'Go' and defined $start) {
+            $end = $cur->{'datetime'};
+            my $duration = $end->subtract_datetime($start);
+            $presence->add_duration($duration);
+
+            $end = undef;
+            $start = undef;
+        }
+    }
+
+    # If we have something left over, that means we haven't clocked out
+    # just yet for the day. This is a common case. Just take 'now' and
+    # add the duration to it to our presence.
+    if ($start) {
+        my $now = DateTime->now(time_zone => 'Europe/Vienna');
+        my $duration = $now->delta_ms($start);
+        $presence->add_duration($duration);
+    }
+
+    my ($hours, $minutes) = $presence->in_units('hours', 'minutes');
+    printf("Presence: %02d:%02d\n", $hours, $minutes);
+}
+
 sub overview {
     $month = $rsct->monthly_view();
 
     say('Flexitime: '.$rsct->flexitime);
     say('Leave: '.$rsct->leave);
 
-    foreach my $item (@{$rsct->positions}) {
-        say($item->{'time'}.': '.$item->{'type'});
-    }
+    calculate_presence();
 
     say('Overview '.$month->{'month'}.'.'.$month->{'year'}.':');
     foreach my $day (@{$month->{'days'}}) {

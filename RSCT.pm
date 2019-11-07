@@ -262,6 +262,7 @@ sub _parse_overview {
                                                 'time' => $arr[2],
                                                 'type' => $arr[3]
                                                };
+                                    $elem->{'type'} =~ s/^\s+|\s+$//g;
                                     push(@positions, $elem);
                                 }
                             }
