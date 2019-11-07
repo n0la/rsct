@@ -33,7 +33,38 @@ sub usage {
     say('rsct [command] [options]');
 }
 
-sub calculate_presence {
+sub show_positions {
+    my @positions = @{ $rsct->positions };
+    my @dates;
+    my @undates;
+
+    foreach my $pos (@positions) {
+        my $time = $pos->{'time'};
+        if ($time =~ m/(\d+)\:(\d+) (AM|PM)/g) {
+            my ($hour, $minute, $pm) = ($1, $2, $3);
+            $hour += 12 if $pm =~ m/PM/i && ($hour != 0 && $hour != 12);
+            $hour  =  0 if $pm =~ m/AM/i && ($hour == 12);
+
+            my $datetime = DateTime->now(time_zone => 'Europe/Vienna')
+              ->set(hour => $hour, minute => $minute)
+              ;
+            my $obj = { datetime => $datetime, type => $pos->{'type'} };
+            push(@undates, $obj);
+        }
+    }
+
+    @dates = sort { $a->{'datetime'}->epoch cmp $b->{'datetime'}->epoch } @undates;
+
+    foreach my $cur (@dates) {
+        printf("%02d:%02d: %s\n",
+               $cur->{'datetime'}->hour,
+               $cur->{'datetime'}->minute,
+               $cur->{'type'}
+              );
+    }
+}
+
+sub show_presence {
     my @positions = @{ $rsct->positions };
     my @dates;
     my @undates;
@@ -59,12 +90,6 @@ sub calculate_presence {
     @dates = sort { $a->{'datetime'}->epoch cmp $b->{'datetime'}->epoch } @undates;
 
     foreach my $cur (@dates) {
-        printf("%02d:%02d: %s\n",
-               $cur->{'datetime'}->hour,
-               $cur->{'datetime'}->minute,
-               $cur->{'type'}
-           );
-
         if ($cur->{'type'} eq 'Come') {
             $start = $cur->{'datetime'};
         } elsif ($cur->{'type'} eq 'Go' and defined $start) {
@@ -96,7 +121,8 @@ sub overview {
     say('Flexitime: '.$rsct->flexitime);
     say('Leave: '.$rsct->leave);
 
-    calculate_presence();
+    show_positions();
+    show_presence();
 
     say('Overview '.$month->{'month'}.'.'.$month->{'year'}.':');
     foreach my $day (@{$month->{'days'}}) {
@@ -231,6 +257,11 @@ sub cmd_overview {
     return 0;
 }
 
+sub cmd_presence {
+    show_presence();
+    return 0;
+}
+
 sub cmd_go {
     $rsct->go();
     return 0;
@@ -270,6 +301,7 @@ my %commands = (
                 'go' => \&cmd_go,
                 'come' => \&cmd_come,
                 'status' => \&cmd_status,
+                'presence' => \&cmd_presence,
                );
 
 $command = '' unless defined $command;
