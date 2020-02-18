@@ -71,6 +71,7 @@ sub show_presence {
     my $start = undef;
     my $end = undef;
     my $presence = DateTime::Duration->new();
+    my $had_go = 0;
 
     foreach my $pos (@positions) {
         my $time = $pos->{'time'};
@@ -99,6 +100,8 @@ sub show_presence {
 
             $end = undef;
             $start = undef;
+
+            $had_go = 1;
         }
     }
 
@@ -109,6 +112,18 @@ sub show_presence {
         my $now = DateTime->now(time_zone => 'Europe/Vienna');
         my $duration = $now->delta_ms($start);
         $presence->add_duration($duration);
+    }
+
+    # This means there was no "go" somewhere in our history. This is common
+    # if we had no break. This case, after 6 hours and 30 minutes, we subtract
+    # a break of 30 minutes ourselves
+    unless ($had_go) {
+        my ($hours, $minutes) = $presence->in_units('hours', 'minutes');
+        if ($hours > 6 or ($hours == 6 and $minutes > 30)) {
+            # Subtract break of 30 minutes
+            my $break = DateTime::Duration->new(minutes => 30);
+            $presence->subtract_duration($break);
+        }
     }
 
     my ($hours, $minutes) = $presence->in_units('hours', 'minutes');
